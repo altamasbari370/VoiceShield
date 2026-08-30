@@ -9,4 +9,5 @@ librosa
 soundfile
 noisereduce
 numpy
-httpxemail-validator
+httpx
+email-validator
