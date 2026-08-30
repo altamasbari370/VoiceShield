@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta, timezone
 
 from pwdlib import PasswordHash
@@ -36,7 +37,10 @@ def verify_password(
 # JWT configuration
 # =========================================================
 
-SECRET_KEY = "CHANGE_THIS_TO_A_LONG_RANDOM_SECRET"
+SECRET_KEY = os.getenv("JWT_SECRET")
+
+if not SECRET_KEY:
+    raise RuntimeError("JWT_SECRET environment variable is not set")
 
 ALGORITHM = "HS256"
 
