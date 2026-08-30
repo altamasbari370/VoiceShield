@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+python-multipart
+sqlalchemy
+psycopg2-binary
+python-jose[cryptography]
+pwdlib[argon2]
+librosa
+soundfile
+noisereduce
+numpy
