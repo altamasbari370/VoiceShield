@@ -1,8 +1,20 @@
 import os
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
+from dotenv import load_dotenv
 from pwdlib import PasswordHash
 from jose import jwt, JWTError
+
+
+# =========================================================
+# Load environment variables
+# =========================================================
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+ENV_FILE = BASE_DIR / ".env"
+
+load_dotenv(ENV_FILE)
 
 
 # =========================================================
@@ -45,7 +57,6 @@ if not SECRET_KEY:
 ALGORITHM = "HS256"
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
-
 
 # =========================================================
 # Create JWT access token

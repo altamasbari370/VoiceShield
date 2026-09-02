@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.audio_processor import split_audio
 from app.services.ml_service import predict_chunk
 from app.services.decision_service import analyze_predictions
+
 from app.auth import (
     hash_password,
     verify_password,
@@ -12,9 +13,23 @@ from app.auth import (
     verify_access_token
 )
 
-from app.models import UserRegister, UserLogin
-from app.schemas.profile import ProfileCreate, ProfileResponse
-from app.database import engine, Base, get_db
+from app.models import (
+    UserRegister,
+    UserLogin,
+    ChangePasswordRequest
+)
+
+from app.schemas.profile import (
+    ProfileCreate,
+    ProfileResponse
+)
+
+from app.database import (
+    engine,
+    Base,
+    get_db
+)
+
 from app import db_models
 
 
@@ -68,7 +83,6 @@ def get_current_user(
     return user
 
 
-
 # =========================================================
 # CREATE DATABASE TABLES
 # =========================================================
@@ -100,7 +114,6 @@ def register(
 
     email = user.email.lower().strip()
 
-
     # -----------------------------------------------------
     # Password validation
     # -----------------------------------------------------
@@ -112,7 +125,6 @@ def register(
             detail="Password must be at least 8 characters"
         )
 
-
     # -----------------------------------------------------
     # Check if user already exists
     # -----------------------------------------------------
@@ -123,14 +135,12 @@ def register(
         .first()
     )
 
-
     if existing_user:
 
         raise HTTPException(
             status_code=400,
             detail="User already exists"
         )
-
 
     # -----------------------------------------------------
     # Hash password
@@ -139,7 +149,6 @@ def register(
     hashed_password = hash_password(
         user.password
     )
-
 
     # -----------------------------------------------------
     # Create database user
@@ -150,13 +159,11 @@ def register(
         password_hash=hashed_password
     )
 
-
     db.add(new_user)
 
     db.commit()
 
     db.refresh(new_user)
-
 
     return {
 
@@ -180,7 +187,6 @@ def login(
 
     email = user.email.lower().strip()
 
-
     # -----------------------------------------------------
     # Find user in PostgreSQL
     # -----------------------------------------------------
@@ -190,7 +196,6 @@ def login(
         .filter(db_models.User.email == email)
         .first()
     )
-
 
     # -----------------------------------------------------
     # User doesn't exist
@@ -202,7 +207,6 @@ def login(
             status_code=401,
             detail="Invalid email or password"
         )
-
 
     # -----------------------------------------------------
     # Verify password
@@ -218,7 +222,6 @@ def login(
             detail="Invalid email or password"
         )
 
-
     # -----------------------------------------------------
     # Create JWT token
     # -----------------------------------------------------
@@ -229,7 +232,6 @@ def login(
             "email": stored_user.email
         }
     )
-
 
     return {
 
@@ -246,12 +248,72 @@ def login(
 
 
 # =========================================================
-# AUDIO UPLOAD
-# =========================================================
-# =========================================================
-# AUDIO UPLOAD
+# CHANGE PASSWORD
 # =========================================================
 
+@app.post("/auth/change-password")
+def change_password(
+    request: ChangePasswordRequest,
+    current_user: db_models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+
+    # -----------------------------------------------------
+    # Validate new password length
+    # -----------------------------------------------------
+
+    if len(request.new_password) < 8:
+
+        raise HTTPException(
+            status_code=400,
+            detail="New password must be at least 8 characters"
+        )
+
+    # -----------------------------------------------------
+    # Make sure new password is different
+    # -----------------------------------------------------
+
+    if request.current_password == request.new_password:
+
+        raise HTTPException(
+            status_code=400,
+            detail="New password must be different from current password"
+        )
+
+    # -----------------------------------------------------
+    # Verify current password
+    # -----------------------------------------------------
+
+    if not verify_password(
+        request.current_password,
+        current_user.password_hash
+    ):
+
+        raise HTTPException(
+            status_code=401,
+            detail="Current password is incorrect"
+        )
+
+    # -----------------------------------------------------
+    # Hash new password
+    # -----------------------------------------------------
+
+    current_user.password_hash = hash_password(
+        request.new_password
+    )
+
+    # -----------------------------------------------------
+    # Save new password to PostgreSQL
+    # -----------------------------------------------------
+
+    db.commit()
+
+    db.refresh(current_user)
+
+    return {
+
+        "message": "Password changed successfully"
+    }
 
 
 # =========================================================
@@ -267,16 +329,21 @@ def get_profile(
 ):
 
     return {
+
         "user_id": current_user.id,
+
         "email": current_user.email,
+
         "name": current_user.name,
+
         "age": current_user.age,
+
         "gender": current_user.gender,
+
         "profile_picture": current_user.profile_picture,
+
         "profile_completed": current_user.profile_completed
     }
-
-
 
 
 # =========================================================
@@ -294,27 +361,40 @@ def create_profile(
 ):
 
     current_user.name = profile.name.strip()
+
     current_user.age = profile.age
+
     current_user.gender = profile.gender.strip()
+
     current_user.profile_picture = profile.profile_picture
 
     current_user.profile_completed = True
 
     db.commit()
+
     db.refresh(current_user)
 
     return {
+
         "user_id": current_user.id,
+
         "email": current_user.email,
+
         "name": current_user.name,
+
         "age": current_user.age,
+
         "gender": current_user.gender,
+
         "profile_picture": current_user.profile_picture,
+
         "profile_completed": current_user.profile_completed
     }
 
 
-
+# =========================================================
+# AUDIO UPLOAD
+# =========================================================
 
 @app.post("/upload-audio")
 async def upload_audio(

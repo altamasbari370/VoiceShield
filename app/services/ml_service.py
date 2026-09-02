@@ -1,7 +1,11 @@
+import os
 import httpx
 
 
-ML_API_URL = "https://swarrakshak-ml.onrender.com/predict"
+ML_API_URL = os.getenv(
+    "ML_API_URL",
+    "https://swarrakshak-ml.onrender.com/predict"
+)
 
 
 async def predict_chunk(
