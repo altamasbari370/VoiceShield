@@ -37,7 +37,7 @@ from app import db_models
 # FASTAPI APP
 # =========================================================
 
-app = FastAPI(title="VoiceShield API")
+app = FastAPI(title="SwarRakshak")
 
 
 # =========================================================
