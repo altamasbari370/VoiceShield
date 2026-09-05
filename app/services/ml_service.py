@@ -9,15 +9,13 @@ async def predict_audio_bytes(
     filename: str = "recording.wav"
 ):
     """
-    Send one complete 5-second WAV recording directly
+    Send one complete WAV recording directly
     to the Aurigin voice deepfake detection API.
 
     Audio is kept in memory and sent directly to Aurigin.
     No temporary audio file is created.
     """
 
-    # Read the API key when the function runs,
-    # after the application environment has been loaded.
     aurigin_api_key = os.getenv("AURIGIN_API_KEY")
 
     if not aurigin_api_key:
@@ -32,7 +30,7 @@ async def predict_audio_bytes(
         async with httpx.AsyncClient(timeout=60.0) as client:
 
             files = {
-                "file": (
+                "audio": (
                     filename,
                     audio_data,
                     "audio/wav"
