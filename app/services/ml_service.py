@@ -30,12 +30,12 @@ async def predict_audio_bytes(
         async with httpx.AsyncClient(timeout=60.0) as client:
 
             files = {
-                "audio": (
-                    filename,
-                    audio_data,
-                    "audio/wav"
-                )
-            }
+    "file": (
+        filename,
+        audio_data,
+        "audio/wav"
+    )
+}
 
             headers = {
                 "x-api-key": aurigin_api_key
