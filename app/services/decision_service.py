@@ -1,122 +1,87 @@
-def analyze_predictions(predictions):
+def analyze_prediction(prediction: dict) -> dict:
     """
-    Combine multiple Aurigin prediction responses into
-    one overall VoiceShield detection result.
-
-    Each item in `predictions` represents one audio batch
-    analyzed by Aurigin.
+    Convert the raw Aurigin prediction into the
+    standardized VoiceShield response used by Android.
     """
 
-    if not predictions:
+    if not isinstance(prediction, dict):
         return {
             "status": "NO_RESULT",
-            "average_spoof_probability": 0.0,
             "confidence": 0.0,
-            "suspicious_segments": 0,
-            "total_segments": 0
+            "spoof_probability": 0.0,
+            "message": "No valid prediction received"
         }
 
-    spoof_probabilities = []
-    suspicious_segments = 0
-    total_segments = 0
+    global_data = prediction.get("global", {})
 
-    for prediction in predictions:
-
-        if not isinstance(prediction, dict):
-            continue
-
-        global_data = prediction.get("global", {})
-
-        if not isinstance(global_data, dict):
-            continue
-
-        result = str(
-            global_data.get("result", "")
-        ).lower().strip()
-
-        try:
-            confidence = float(
-                global_data.get("confidence", 0.0)
-            )
-        except (TypeError, ValueError):
-            confidence = 0.0
-
-        # Keep confidence safely between 0 and 1.
-        confidence = max(
-            0.0,
-            min(1.0, confidence)
-        )
-
-        total_segments += 1
-
-        if result == "spoofed":
-
-            spoof_probability = confidence
-            suspicious_segments += 1
-
-        elif result == "partially_spoofed":
-
-            spoof_probability = confidence
-            suspicious_segments += 1
-
-        elif result == "bonafide":
-
-            spoof_probability = 1.0 - confidence
-
-        else:
-
-            # Unknown result.
-            total_segments -= 1
-            continue
-
-        spoof_probabilities.append(
-            spoof_probability
-        )
-
-    if not spoof_probabilities:
+    if not isinstance(global_data, dict):
         return {
             "status": "NO_RESULT",
-            "average_spoof_probability": 0.0,
             "confidence": 0.0,
-            "suspicious_segments": 0,
-            "total_segments": 0
+            "spoof_probability": 0.0,
+            "message": "Invalid prediction format"
         }
 
-    # Average spoof probability across all
-    # analyzed batches.
-    average_spoof_probability = (
-        sum(spoof_probabilities)
-        / len(spoof_probabilities)
+    result = str(
+        global_data.get("result", "")
+    ).lower().strip()
+
+    try:
+        aurigin_confidence = float(
+            global_data.get("confidence", 0.0)
+        )
+    except (TypeError, ValueError):
+        aurigin_confidence = 0.0
+
+    # Keep confidence safely between 0 and 1
+    aurigin_confidence = max(
+        0.0,
+        min(1.0, aurigin_confidence)
     )
 
-    suspicious_ratio = (
-        suspicious_segments
-        / total_segments
-        if total_segments > 0
-        else 0.0
-    )
-
-    # VoiceShield decision.
-    if (
-        average_spoof_probability >= 0.70
-        and suspicious_ratio >= 0.50
-    ):
-        status = "SUSPICIOUS"
-    else:
+    if result == "bonafide":
         status = "GENUINE"
 
-    confidence = average_spoof_probability * 100
+        # Aurigin confidence represents confidence
+        # that the voice is genuine.
+        confidence = aurigin_confidence * 100
+
+        # Remaining probability represents spoof probability.
+        spoof_probability = 1.0 - aurigin_confidence
+
+        message = "Voice appears genuine"
+
+    elif result == "spoofed":
+        status = "SUSPICIOUS"
+
+        # Aurigin confidence represents confidence
+        # that the voice is spoofed.
+        confidence = aurigin_confidence * 100
+
+        spoof_probability = aurigin_confidence
+
+        message = "Possible AI-generated or cloned voice detected"
+
+    elif result == "partially_spoofed":
+        status = "SUSPICIOUS"
+
+        confidence = aurigin_confidence * 100
+
+        spoof_probability = aurigin_confidence
+
+        message = "Possible partially AI-generated or cloned voice detected"
+
+    else:
+        return {
+            "status": "NO_RESULT",
+            "confidence": 0.0,
+            "spoof_probability": 0.0,
+            "message": "Unable to determine voice authenticity"
+        }
 
     return {
         "status": status,
-        "average_spoof_probability": round(
-            average_spoof_probability,
-            4
-        ),
-        "confidence": round(
-            confidence,
-            2
-        ),
-        "suspicious_segments": suspicious_segments,
-        "total_segments": total_segments
+        "confidence": round(confidence, 2),
+        "spoof_probability": round(spoof_probability, 4),
+        "message": message
     }

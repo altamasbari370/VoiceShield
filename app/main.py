@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 from app.services.ml_service import predict_audio_bytes
-from app.services.decision_service import analyze_predictions
+from app.services.decision_service import analyze_prediction
 
 from app.auth import (
     hash_password,
@@ -516,7 +516,7 @@ async def upload_audio(
     # Return prediction
     # -----------------------------------------------------
 
-    analysis = analyze_predictions([prediction])
+    analysis = analyze_prediction(prediction)
 
     return {
     "filename": file.filename,
