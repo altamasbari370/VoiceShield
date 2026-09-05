@@ -1,9 +1,11 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-
-from app.audio_processor import split_audio
-from app.services.ml_service import predict_chunk
+from pathlib import Path
+from dotenv import load_dotenv
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
+from app.services.ml_service import predict_audio_bytes
 from app.services.decision_service import analyze_predictions
 
 from app.auth import (
@@ -68,9 +70,24 @@ def get_current_user(
 
     user_id = payload.get("sub")
 
+    if user_id is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token"
+        )
+
+    try:
+        user_id = int(user_id)
+
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token"
+        )
+
     user = (
         db.query(db_models.User)
-        .filter(db_models.User.id == int(user_id))
+        .filter(db_models.User.id == user_id)
         .first()
     )
 
@@ -393,72 +410,123 @@ def create_profile(
 
 
 # =========================================================
-# AUDIO UPLOAD
+# AUDIO UPLOAD / AI DETECTION
 # =========================================================
 
 @app.post("/upload-audio")
 async def upload_audio(
     file: UploadFile = File(...)
 ):
+    """
+    Receive one complete 5-second WAV recording.
+
+    New architecture:
+
+        Android microphone
+                ↓
+        5-second audio in RAM
+                ↓
+        FastAPI
+                ↓
+        Aurigin API
+                ↓
+        Prediction returned to Android
+
+    There is NO:
+        - 2-second chunking
+        - 1-second overlapping window
+        - processed_audio storage
+        - local audio-file processing
+    """
+
+    # -----------------------------------------------------
+    # Validate file type
+    # -----------------------------------------------------
+
+    if file.content_type not in (
+        "audio/wav",
+        "audio/x-wav",
+        "audio/wave",
+        "application/octet-stream"
+    ):
+
+        raise HTTPException(
+            status_code=400,
+            detail="Only WAV audio files are supported"
+        )
+
+    # -----------------------------------------------------
+    # Read audio into backend RAM
+    # -----------------------------------------------------
 
     audio_data = await file.read()
 
-    # -----------------------------------------------------
-    # Split audio into 2-second windows
-    # with 1-second stride
-    # -----------------------------------------------------
+    if not audio_data:
 
-    chunks, sample_rate, chunk_files = split_audio(
-        audio_data
-    )
-
-    # -----------------------------------------------------
-    # Send every chunk to ML model
-    # -----------------------------------------------------
-
-    predictions = []
-
-    for chunk_file in chunk_files:
-
-        result = await predict_chunk(
-            chunk_file
+        raise HTTPException(
+            status_code=400,
+            detail="Audio file is empty"
         )
 
-        predictions.append(result)
+    # -----------------------------------------------------
+    # Basic size protection
+    #
+    # A 5-second mono 16 kHz 16-bit WAV is normally around
+    # 160 KB plus a small WAV header.
+    #
+    # This limit prevents accidentally sending huge files
+    # to the external AI API.
+    # -----------------------------------------------------
+
+    MAX_AUDIO_SIZE = 2 * 1024 * 1024
+
+    if len(audio_data) > MAX_AUDIO_SIZE:
+
+        raise HTTPException(
+            status_code=400,
+            detail="Audio file is too large. Please send a 5-second WAV recording."
+        )
 
     # -----------------------------------------------------
-    # Generate overall decision
+    # Send the complete recording directly to Aurigin
     # -----------------------------------------------------
 
-    analysis = analyze_predictions(
-        predictions
-    )
+    try:
+
+        prediction = await predict_audio_bytes(
+            audio_data=audio_data,
+            filename=file.filename or "recording.wav"
+        )
+
+    except RuntimeError as e:
+
+        raise HTTPException(
+            status_code=502,
+            detail=str(e)
+        )
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Audio analysis failed: {str(e)}"
+        )
 
     # -----------------------------------------------------
-    # Return complete analysis
+    # Return prediction
     # -----------------------------------------------------
+
+    analysis = analyze_predictions([prediction])
 
     return {
-
-        "filename": file.filename,
-
-        "content_type": file.content_type,
-
-        "size_bytes": len(audio_data),
-
-        "sample_rate": sample_rate,
-
-        "window_duration_seconds": 2,
-
-        "stride_seconds": 1,
-
-        "number_of_windows": len(chunks),
-
-        # Overall decision for the app
-        "analysis": analysis,
-
-        # Detailed results for History / graphs
-        "predictions": predictions,
-
-        "message": "Audio processed and analyzed successfully"
-    }
+    "filename": file.filename,
+    "content_type": file.content_type,
+    "size_bytes": len(audio_data),
+    "duration_seconds": prediction.get(
+        "audio_duration",
+        5
+    ),
+    "prediction": prediction,
+    "analysis": analysis,
+    "message": "Audio analyzed successfully"
+}

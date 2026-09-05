@@ -1,7 +1,10 @@
 def analyze_predictions(predictions):
     """
-    Analyze chunk-level ML predictions and generate
-    one overall VoiceShield decision.
+    Combine multiple Aurigin prediction responses into
+    one overall VoiceShield detection result.
+
+    Each item in `predictions` represents one audio batch
+    analyzed by Aurigin.
     """
 
     if not predictions:
@@ -9,56 +12,91 @@ def analyze_predictions(predictions):
             "status": "NO_RESULT",
             "average_spoof_probability": 0.0,
             "confidence": 0.0,
-            "suspicious_chunks": 0,
-            "total_chunks": 0
+            "suspicious_segments": 0,
+            "total_segments": 0
         }
 
-    total_chunks = len(predictions)
+    spoof_probabilities = []
+    suspicious_segments = 0
+    total_segments = 0
 
-    # -----------------------------------------------------
-    # Extract spoof probabilities
-    # -----------------------------------------------------
+    for prediction in predictions:
 
-    spoof_probabilities = [
-        float(result["spoof_probability"])
-        for result in predictions
-    ]
+        if not isinstance(prediction, dict):
+            continue
 
-    # -----------------------------------------------------
-    # Calculate average spoof probability
-    # -----------------------------------------------------
+        global_data = prediction.get("global", {})
 
+        if not isinstance(global_data, dict):
+            continue
+
+        result = str(
+            global_data.get("result", "")
+        ).lower().strip()
+
+        try:
+            confidence = float(
+                global_data.get("confidence", 0.0)
+            )
+        except (TypeError, ValueError):
+            confidence = 0.0
+
+        # Keep confidence safely between 0 and 1.
+        confidence = max(
+            0.0,
+            min(1.0, confidence)
+        )
+
+        total_segments += 1
+
+        if result == "spoofed":
+
+            spoof_probability = confidence
+            suspicious_segments += 1
+
+        elif result == "partially_spoofed":
+
+            spoof_probability = confidence
+            suspicious_segments += 1
+
+        elif result == "bonafide":
+
+            spoof_probability = 1.0 - confidence
+
+        else:
+
+            # Unknown result.
+            total_segments -= 1
+            continue
+
+        spoof_probabilities.append(
+            spoof_probability
+        )
+
+    if not spoof_probabilities:
+        return {
+            "status": "NO_RESULT",
+            "average_spoof_probability": 0.0,
+            "confidence": 0.0,
+            "suspicious_segments": 0,
+            "total_segments": 0
+        }
+
+    # Average spoof probability across all
+    # analyzed batches.
     average_spoof_probability = (
-        sum(spoof_probabilities) / total_chunks
+        sum(spoof_probabilities)
+        / len(spoof_probabilities)
     )
-
-    # -----------------------------------------------------
-    # Count suspicious chunks
-    # -----------------------------------------------------
-
-    suspicious_chunks = sum(
-        1
-        for result in predictions
-        if result["prediction"].upper() == "FAKE"
-    )
-
-    # -----------------------------------------------------
-    # Suspicious ratio
-    # -----------------------------------------------------
 
     suspicious_ratio = (
-        suspicious_chunks / total_chunks
+        suspicious_segments
+        / total_segments
+        if total_segments > 0
+        else 0.0
     )
 
-    # -----------------------------------------------------
-    # Initial decision rule
-    #
-    # Suspicious when:
-    # - average spoof probability >= 0.70
-    #   AND
-    # - at least 50% of chunks are FAKE
-    # -----------------------------------------------------
-
+    # VoiceShield decision.
     if (
         average_spoof_probability >= 0.70
         and suspicious_ratio >= 0.50
@@ -67,20 +105,18 @@ def analyze_predictions(predictions):
     else:
         status = "GENUINE"
 
-    # -----------------------------------------------------
-    # Confidence displayed to the user
-    # -----------------------------------------------------
-
     confidence = average_spoof_probability * 100
 
     return {
         "status": status,
         "average_spoof_probability": round(
-            average_spoof_probability, 4
+            average_spoof_probability,
+            4
         ),
         "confidence": round(
-            confidence, 2
+            confidence,
+            2
         ),
-        "suspicious_chunks": suspicious_chunks,
-        "total_chunks": total_chunks
+        "suspicious_segments": suspicious_segments,
+        "total_segments": total_segments
     }
