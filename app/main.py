@@ -1,19 +1,53 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from pathlib import Path
 from dotenv import load_dotenv
+
+
+# =========================================================
+# ENVIRONMENT
+# =========================================================
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
+
+
+# =========================================================
+# SERVICES
+# =========================================================
+
 from app.services.ml_service import predict_audio_bytes
 from app.services.decision_service import analyze_prediction
+
+
+# =========================================================
+# ROUTERS
+# =========================================================
+
+from app.routers.history import router as history_router
+
+
+# =========================================================
+# AUTH DEPENDENCY
+# =========================================================
+
+from app.dependencies import get_current_user
+
+
+# =========================================================
+# AUTHENTICATION
+# =========================================================
 
 from app.auth import (
     hash_password,
     verify_password,
-    create_access_token,
-    verify_access_token
+    create_access_token
 )
+
+
+# =========================================================
+# REQUEST MODELS
+# =========================================================
 
 from app.models import (
     UserRegister,
@@ -21,10 +55,20 @@ from app.models import (
     ChangePasswordRequest
 )
 
+
+# =========================================================
+# PROFILE SCHEMAS
+# =========================================================
+
 from app.schemas.profile import (
     ProfileCreate,
     ProfileResponse
 )
+
+
+# =========================================================
+# DATABASE
+# =========================================================
 
 from app.database import (
     engine,
@@ -41,63 +85,7 @@ from app import db_models
 
 app = FastAPI(title="SwarRakshak")
 
-
-# =========================================================
-# AUTHENTICATION
-# =========================================================
-
-security = HTTPBearer()
-
-
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-):
-    """
-    Verify JWT token and return the logged-in user.
-    """
-
-    token = credentials.credentials
-
-    try:
-        payload = verify_access_token(token)
-
-    except ValueError:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid or expired token"
-        )
-
-    user_id = payload.get("sub")
-
-    if user_id is None:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid token"
-        )
-
-    try:
-        user_id = int(user_id)
-
-    except (TypeError, ValueError):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid token"
-        )
-
-    user = (
-        db.query(db_models.User)
-        .filter(db_models.User.id == user_id)
-        .first()
-    )
-
-    if user is None:
-        raise HTTPException(
-            status_code=401,
-            detail="User not found"
-        )
-
-    return user
+app.include_router(history_router)
 
 
 # =========================================================
@@ -420,7 +408,7 @@ async def upload_audio(
     """
     Receive one complete 5-second WAV recording.
 
-    New architecture:
+    Architecture:
 
         Android microphone
                 ↓
@@ -513,20 +501,24 @@ async def upload_audio(
         )
 
     # -----------------------------------------------------
-    # Return prediction
+    # Analyze prediction
     # -----------------------------------------------------
 
     analysis = analyze_prediction(prediction)
 
+    # -----------------------------------------------------
+    # Return prediction
+    # -----------------------------------------------------
+
     return {
-    "filename": file.filename,
-    "content_type": file.content_type,
-    "size_bytes": len(audio_data),
-    "duration_seconds": prediction.get(
-        "audio_duration",
-        5
-    ),
-    "prediction": prediction,
-    "analysis": analysis,
-    "message": "Audio analyzed successfully"
-}
+        "filename": file.filename,
+        "content_type": file.content_type,
+        "size_bytes": len(audio_data),
+        "duration_seconds": prediction.get(
+            "audio_duration",
+            5
+        ),
+        "prediction": prediction,
+        "analysis": analysis,
+        "message": "Audio analyzed successfully"
+    }

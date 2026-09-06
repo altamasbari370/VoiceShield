@@ -5,11 +5,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 
-# Load variables from .env
+# =========================================================
+# LOAD ENVIRONMENT VARIABLES
+# =========================================================
+
 load_dotenv()
 
-
-# Get PostgreSQL connection URL
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
@@ -18,14 +19,20 @@ if not DATABASE_URL:
     )
 
 
-# Create database engine
+# =========================================================
+# DATABASE ENGINE
+# =========================================================
+
 engine = create_engine(
     DATABASE_URL,
     echo=True
 )
 
 
-# Create database session
+# =========================================================
+# SESSION
+# =========================================================
+
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
@@ -33,15 +40,22 @@ SessionLocal = sessionmaker(
 )
 
 
-# Base class for database models
+# =========================================================
+# BASE MODEL
+# =========================================================
+
 Base = declarative_base()
 
 
-# Database dependency for FastAPI
+# =========================================================
+# DATABASE DEPENDENCY
+# =========================================================
+
 def get_db():
     db = SessionLocal()
 
     try:
         yield db
+
     finally:
         db.close()
