@@ -83,7 +83,7 @@ from app import db_models
 # FASTAPI APP
 # =========================================================
 
-app = FastAPI(title="SwarRakshak")
+app = FastAPI(title="VoiceSheild")
 
 app.include_router(history_router)
 
